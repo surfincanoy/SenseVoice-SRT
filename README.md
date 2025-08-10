@@ -6,7 +6,7 @@
 English:
 Based on the official [sensevoice](https://github.com/FunAudioLLM/SenseVoice) webui, it can output SRT subtitles for single files or in batch mode. It needs to be used in conjunction with the official project.
 
-Japanese:
+日本語:
 これは[sensevoice](https://github.com/FunAudioLLM/SenseVoice)の公式webuiを基にしたものです。単一ファイルまたはバッチ処理でSRT字幕を出力できます。これは公式プロジェクトと併せて使用する必要があります。
 
 
