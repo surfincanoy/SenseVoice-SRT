@@ -10,4 +10,4 @@ Based on the official [sensevoice](https://github.com/FunAudioLLM/SenseVoice) we
 これは[sensevoice](https://github.com/FunAudioLLM/SenseVoice)の公式webuiを基にしたものです。単一ファイルまたはバッチ処理でSRT字幕を出力できます。これは公式プロジェクトと併せて使用する必要があります。
 
 
-!(屏幕.jpeg)
+![](屏幕.jpeg)
