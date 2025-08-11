@@ -1,5 +1,5 @@
 # coding=utf-8
-
+import io  # 用于在内存中操作文件
 import shutil
 import threading
 import time
@@ -21,6 +21,15 @@ vad_model_dir = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"  # VAD模型路�
 # 首先加载VAD模型
 vad_model = AutoModel(
     model=vad_model_dir,
+    trust_remote_code=True,
+    remote_code="./model.py",
+    device="cuda:0",
+    disable_update=True,
+)
+
+# 加载SenseVoice模型
+model = AutoModel(
+    model=model_dir,
     trust_remote_code=True,
     remote_code="./model.py",
     device="cuda:0",
@@ -69,10 +78,9 @@ def crop_audio(audio_data, start_time, end_time, sample_rate):
     return audio_data[start_sample:end_sample]
 
 
+# 模型推理函数
 def model_inference(input_wav, language, fs=16000):
-    temp_path = Path(input_wav).parent
     srt_file = Path(input_wav).with_suffix(".srt")
-    # task_abbr = {"Speech Recognition": "ASR", "Rich Text Transcription": ("ASR", "AED", "SER")}
     language_abbr = {
         "auto": "auto",
         "zh": "zh",
@@ -83,10 +91,8 @@ def model_inference(input_wav, language, fs=16000):
         "nospeech": "nospeech",
     }
 
-    # task = "Speech Recognition" if task is None else task
     language = "auto" if len(language) < 1 else language
     selected_language = language_abbr[language]
-    # selected_task = task_abbr.get(task)
 
     if isinstance(input_wav, tuple):
         fs, input_wav = input_wav
@@ -106,14 +112,6 @@ def model_inference(input_wav, language, fs=16000):
         max_single_segment_time=30000,  # 最大单个片段时长
     )
 
-    # 加载SenseVoice模型
-    model = AutoModel(
-        model=model_dir,
-        trust_remote_code=True,
-        remote_code="./model.py",
-        device="cuda:0",
-        disable_update=True,
-    )
     # 从VAD模型的输出中提取每个语音片段的开始和结束时间
     segments = vad_res[0]["value"]  # 假设只有一段音频，且其片段信息存储在第一个元素中
 
@@ -126,26 +124,24 @@ def model_inference(input_wav, language, fs=16000):
         start_time, end_time = segment  # 获取开始和结束时间
         cropped_audio = crop_audio(audio_data, start_time, end_time, sample_rate)
 
-        # 将裁剪后的音频保存为临时文件
-        temp_audio_file = f"{temp_path}/temp_cropped.wav"
-        sf.write(temp_audio_file, cropped_audio, sample_rate)
+        # 将裁剪后的音频保存到内存中
+        with io.BytesIO() as temp_audio_buffer:
+            sf.write(temp_audio_buffer, cropped_audio, sample_rate, format="WAV")
+            temp_audio_buffer.seek(0)  # 重置缓冲区指针到开头
 
-        # 语音转文字处理
-        res = model.generate(
-            input=temp_audio_file,
-            cache={},
-            language=selected_language,  # 自动检测语言
-            use_itn=True,
-            batch_size_s=60,
-            merge_vad=True,  # 启用 VAD 断句
-            merge_length_s=10000,  # 合并长度，单位为毫秒
-        )
+            # 语音转文字处理
+            res = model.generate(
+                input=temp_audio_buffer,
+                cache={},
+                language=selected_language,  # 自动检测语言
+                use_itn=True,
+                batch_size_s=60,
+                merge_vad=True,  # 启用 VAD 断句
+                merge_length_s=10000,  # 合并长度，单位为毫秒
+            )
+
         # 处理输出结果
         text = rich_transcription_postprocess(res[0]["text"])
-        # 添加时间戳
-        # results.append(
-        #     {"start": start_time / 1000, "end": end_time / 1000, "text": text}
-        # )  # 转换为秒
         results.append(
             {
                 "start": start_time / 1000,
@@ -153,14 +149,15 @@ def model_inference(input_wav, language, fs=16000):
                 "text": text.replace(" ", ""),
             }
         )
-        # 输出结果   保存为srt文件
+
+    # 输出结果并保存为srt文件
     write_srt(results, srt_file)
-    gr.Info("音频转录完成。")
     return srt_file
 
 
 def display_srt(srt_file):
     with open(srt_file, "r", encoding="utf-8") as f:
+        gr.Info("音频转录完成。")
         return f.read().strip()
 
 
@@ -178,11 +175,11 @@ def save_file(srt_file, path_input_text):
 
 # 多文件转录
 def multi_file_asr(multi_files_upload, language):
-    num = 1
+    num = 0
     for audio_inputs in multi_files_upload:
         model_inference(audio_inputs, language, fs=16000)
-        gr.Info(f"已转录{num}个音频。")
         num += 1
+        gr.Info(f"已转录{num}个音频。")
     gr.Info(f"总共转录{num}个音频，已全部完成")
 
 
