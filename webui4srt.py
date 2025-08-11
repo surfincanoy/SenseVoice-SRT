@@ -179,8 +179,9 @@ def save_file(srt_file, path_input_text):
 # 多文件转录
 def multi_file_asr(multi_files_upload, language):
     num = 1
-    for audio_inputs in enumerate(multi_files_upload, start=1):
+    for audio_inputs in multi_files_upload:
         model_inference(audio_inputs, language, fs=16000)
+        gr.Info(f"已转录{num}个音频。")
         num += 1
     gr.Info(f"总共转录{num}个音频，已全部完成")
 
