@@ -3,6 +3,7 @@ import io  # 用于在内存中操作文件
 import shutil
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 import gradio as gr
@@ -38,8 +39,6 @@ model = AutoModel(
 
 
 def open_page():
-    import webbrowser
-
     time.sleep(5)
     webbrowser.open_new_tab("http://127.0.0.1:7860")
 
@@ -185,16 +184,9 @@ def multi_file_asr(multi_files_upload, language):
 
 # 字幕文件保存到选定文件夹
 def save_multi_srt(multi_files_upload, path_input_text):
-    if not Path(path_input_text).exists():
-        gr.Warning("请输入有效路径！")
-    else:
-        try:
-            for audio_inputs in multi_files_upload:
-                srt_file = Path(audio_inputs).with_suffix(".srt")
-                shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
-                gr.Info("文件已保存。")
-        except Exception as e:
-            gr.Warning(f"保存文件时出错: {e}")
+    for audio_inputs in multi_files_upload:
+        srt_file = Path(audio_inputs).with_suffix(".srt")
+        save_file(srt_file, path_input_text)
 
 
 html_content = """
@@ -212,25 +204,24 @@ def launch():
     with gr.Blocks(theme=gr.themes.Soft(), title="SenseVoice 在线web界面") as demo:
         gr.HTML(html_content)
 
-        with gr.Tab(label="单文件转录"):
-            with gr.Column():
-                audio_inputs = gr.Audio(label="上传音频或录制麦克风", type="filepath")
-                with gr.Accordion("配置"):
-                    language_inputs = gr.Dropdown(
-                        choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
-                        value="auto",
-                        label="说话语言",
-                    )
-                with gr.Row():
-                    stre_btn = gr.Button("开始转录", variant="primary")
-                    save_btn = gr.Button("保存字幕", variant="primary")
-                path_input_text = gr.Text(
-                    label="保存路径",
-                    interactive=True,
-                    placeholder="请输入正确的目标文件夹",
+        with gr.Tab(label="单文件转录"), gr.Column():
+            audio_inputs = gr.Audio(label="上传音频或录制麦克风", type="filepath")
+            with gr.Accordion("配置"):
+                language_inputs = gr.Dropdown(
+                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
+                    value="auto",
+                    label="说话语言",
                 )
-                text_outputs = gr.Textbox(label="识别结果")
-                srt_reg = gr.Textbox(label="信息传递", visible=False)  # 只用于传递转录完成的信息
+            with gr.Row():
+                stre_btn = gr.Button("开始转录", variant="primary")
+                save_btn = gr.Button("保存字幕", variant="primary")
+            path_input_text = gr.Text(
+                label="保存路径",
+                interactive=True,
+                placeholder="请输入正确的目标文件夹",
+            )
+            text_outputs = gr.Textbox(label="识别结果")
+            srt_reg = gr.Textbox(label="信息传递", visible=False)  # 只用于传递转录完成的信息
 
         stre_btn.click(
             model_inference,
@@ -250,23 +241,22 @@ def launch():
             outputs=[],
         )
 
-        with gr.Tab(label="多文件转录"):
-            with gr.Column():
-                multi_files_upload = gr.File(label="上传音频", file_count="directory", file_types=[".mp3"])
-                with gr.Accordion("配置"):
-                    language_inputs = gr.Dropdown(
-                        choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
-                        value="auto",
-                        label="说话语言",
-                    )
-                with gr.Row():
-                    stre_btn = gr.Button("开始转录", variant="primary")
-                    save_btn = gr.Button("保存字幕", variant="primary")
-                path_input_text = gr.Text(
-                    label="保存路径",
-                    interactive=True,
-                    placeholder="请输入正确的目标文件夹",
+        with gr.Tab(label="多文件转录"), gr.Column():
+            multi_files_upload = gr.File(label="上传音频", file_count="directory", file_types=[".mp3"])
+            with gr.Accordion("配置"):
+                language_inputs = gr.Dropdown(
+                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
+                    value="auto",
+                    label="说话语言",
                 )
+            with gr.Row():
+                stre_btn = gr.Button("开始转录", variant="primary")
+                save_btn = gr.Button("保存字幕", variant="primary")
+            path_input_text = gr.Text(
+                label="保存路径",
+                interactive=True,
+                placeholder="请输入正确的目标文件夹",
+            )
 
         stre_btn.click(
             multi_file_asr,
