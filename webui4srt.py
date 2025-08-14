@@ -26,6 +26,7 @@ vad_model = AutoModel(
     remote_code="./model.py",
     device="cuda:0",
     disable_update=True,
+    max_end_silence_time=600,  # 尾部静音阈值，范围500ms～6000ms，默认值800ms(该值过低容易出现语音提前截断的情况)。
 )
 
 # 加载SenseVoice模型
