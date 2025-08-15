@@ -18,17 +18,6 @@ from funasr.utils.postprocess_utils import rich_transcription_postprocess
 model_dir = "iic/SenseVoiceSmall"
 vad_model_dir = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"  # VAD模型路径
 
-
-# 首先加载VAD模型
-vad_model = AutoModel(
-    model=vad_model_dir,
-    trust_remote_code=True,
-    remote_code="./model.py",
-    device="cuda:0",
-    disable_update=True,
-    max_end_silence_time=600,  # 尾部静音阈值，范围500ms～6000ms，默认值800ms(该值过低容易出现语音提前截断的情况)。
-)
-
 # 加载SenseVoice模型
 model = AutoModel(
     model=model_dir,
@@ -79,7 +68,7 @@ def crop_audio(audio_data, start_time, end_time, sample_rate):
 
 
 # 模型推理函数
-def model_inference(input_wav, language, fs=16000):
+def model_inference(input_wav, language, silence_threshold, fs=16000):
     srt_file = Path(input_wav).with_suffix(".srt")
     language_abbr = {
         "auto": "auto",
@@ -105,6 +94,15 @@ def model_inference(input_wav, language, fs=16000):
             input_wav_t = torch.from_numpy(input_wav).to(torch.float32)
             input_wav = resampler(input_wav_t[None, :])[0, :].numpy()
 
+    # 加载VAD模型
+    vad_model = AutoModel(
+        model=vad_model_dir,
+        trust_remote_code=True,
+        remote_code="./model.py",
+        device="cuda:0",
+        disable_update=True,
+        max_end_silence_time=silence_threshold,  # 尾部静音阈值，范围500ms～6000ms，默认值800ms(该值过低容易出现语音提前截断的情况)。
+    )
     # 使用VAD模型处理音频文件
     vad_res = vad_model.generate(
         input=input_wav,
@@ -152,21 +150,23 @@ def model_inference(input_wav, language, fs=16000):
 
     # 输出结果并保存为srt文件
     write_srt(results, srt_file)
-    return srt_file
+    return results
 
 
-def display_srt(srt_file):
+def display_srt(audio_inputs):
+    srt_file = Path(audio_inputs).with_suffix(".srt")
     with open(srt_file, "r", encoding="utf-8") as f:
         gr.Info("音频转录完成。")
         return f.read().strip()
 
 
 # 字幕文件保存到选定文件夹
-def save_file(srt_file, path_input_text):
+def save_file(audio_inputs, path_input_text):
     if not Path(path_input_text).exists():
         gr.Warning("请输入有效路径！")
     else:
         try:
+            srt_file = Path(audio_inputs).with_suffix(".srt")
             shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
             gr.Info("文件已保存。")
         except Exception as e:
@@ -174,10 +174,10 @@ def save_file(srt_file, path_input_text):
 
 
 # 多文件转录
-def multi_file_asr(multi_files_upload, language):
+def multi_file_asr(multi_files_upload, language, silence_threshold):
     num = 0
     for audio_inputs in multi_files_upload:
-        model_inference(audio_inputs, language, fs=16000)
+        model_inference(audio_inputs, language, silence_threshold, fs=16000)
         num += 1
         gr.Info(f"已转录{num}个音频。")
     gr.Info(f"总共转录{num}个音频，已全部完成")
@@ -186,8 +186,7 @@ def multi_file_asr(multi_files_upload, language):
 # 字幕文件保存到选定文件夹
 def save_multi_srt(multi_files_upload, path_input_text):
     for audio_inputs in multi_files_upload:
-        srt_file = Path(audio_inputs).with_suffix(".srt")
-        save_file(srt_file, path_input_text)
+        save_file(audio_inputs, path_input_text)
 
 
 html_content = """
@@ -207,11 +206,19 @@ def launch():
 
         with gr.Tab(label="单文件转录"), gr.Column():
             audio_inputs = gr.Audio(label="上传音频或录制麦克风", type="filepath")
-            with gr.Accordion("配置"):
+            with gr.Accordion("配置"), gr.Row():
                 language_inputs = gr.Dropdown(
                     choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
                     value="auto",
                     label="说话语言",
+                )
+                end_silence_time = gr.Slider(
+                    label="静音阈值",
+                    minimum=500,
+                    maximum=6000,
+                    step=100,
+                    value=800,
+                    interactive=True,
                 )
             with gr.Row():
                 stre_btn = gr.Button("开始转录", variant="primary")
@@ -222,33 +229,41 @@ def launch():
                 placeholder="请输入正确的目标文件夹",
             )
             text_outputs = gr.Textbox(label="识别结果")
-            srt_reg = gr.Textbox(label="信息传递", visible=False)  # 只用于传递转录完成的信息
+            srt_reg = gr.Textbox(label="", visible=False)  # 只用于传递转录完成的信息
 
         stre_btn.click(
             model_inference,
-            inputs=[audio_inputs, language_inputs],
+            inputs=[audio_inputs, language_inputs, end_silence_time],
             outputs=srt_reg,
         )
 
         srt_reg.change(
             display_srt,
-            inputs=srt_reg,
+            inputs=audio_inputs,
             outputs=text_outputs,
         )
 
         save_btn.click(
             save_file,
-            inputs=[srt_reg, path_input_text],
+            inputs=[audio_inputs, path_input_text],
             outputs=[],
         )
 
         with gr.Tab(label="多文件转录"), gr.Column():
             multi_files_upload = gr.File(label="上传音频", file_count="directory", file_types=[".mp3"])
-            with gr.Accordion("配置"):
+            with gr.Accordion("配置"), gr.Row():
                 language_inputs = gr.Dropdown(
                     choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
                     value="auto",
                     label="说话语言",
+                )
+                end_silence_time = gr.Slider(
+                    label="静音阈值",
+                    minimum=500,
+                    maximum=6000,
+                    step=100,
+                    value=800,
+                    interactive=True,
                 )
             with gr.Row():
                 stre_btn = gr.Button("开始转录", variant="primary")
@@ -261,7 +276,7 @@ def launch():
 
         stre_btn.click(
             multi_file_asr,
-            inputs=[multi_files_upload, language_inputs],
+            inputs=[multi_files_upload, language_inputs, end_silence_time],
             outputs=[],
         )
 
