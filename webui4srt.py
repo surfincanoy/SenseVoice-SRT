@@ -45,19 +45,7 @@ def reformat_time(second):
 # 将语音识别得到的文本转写为srt字幕文本
 def write_srt(results, srt_file):
     with open(srt_file, "w", encoding="utf-8") as f:
-        id = 1
-        for segment in results:
-            f.writelines(
-                str(id)
-                + "\n"
-                + reformat_time(segment["start"])
-                + " --> "
-                + reformat_time(segment["end"])
-                + "\n"
-                + segment["text"]
-                + "\n\n"
-            )
-            id += 1
+        f.writelines(results)
 
 
 # 定义一个函数来裁剪音频
@@ -101,7 +89,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
         remote_code="./model.py",
         device="cuda:0",
         disable_update=True,
-        max_end_silence_time=silence_threshold,  # 尾部静音阈值，范围500ms～6000ms，默认值800ms(该值过低容易出现语音提前截断的情况)。
+        max_end_silence_time=silence_threshold,  # 静音阈值，范围500ms～6000ms，默认值800ms。
     )
     # 使用VAD模型处理音频文件
     vad_res = vad_model.generate(
@@ -117,7 +105,8 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     audio_data, sample_rate = sf.read(input_wav)
 
     # 对每个语音片段进行处理
-    results = []
+    results = ""
+    srt_id = 1
     for segment in segments:
         start_time, end_time = segment  # 获取开始和结束时间
         cropped_audio = crop_audio(audio_data, start_time, end_time, sample_rate)
@@ -141,23 +130,21 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
 
         # 处理输出结果
         text = rich_transcription_postprocess(res[0]["text"])
-        results.append(
-            {
-                "start": start_time / 1000,
-                "end": end_time / 1000,
-                "text": text.replace(" ", ""),
-            }
+        results += (
+            str(srt_id)
+            + "\n"
+            + str(reformat_time(start_time / 1000))
+            + " --> "
+            + str(reformat_time(end_time / 1000))
+            + "\n"
+            + text.replace(" ", "").strip()
+            + "\n\n"
         )
+        srt_id += 1
     # 输出结果并保存为srt文件
     write_srt(results, srt_file)
+    gr.Info("音频转录完成。")
     return results
-
-
-def display_srt(audio_inputs):
-    srt_file = audio_inputs.replace(".mp3", ".srt")
-    with open(srt_file, "r", encoding="utf-8") as f:
-        gr.Info("音频转录完成。")
-        return f.read().strip()
 
 
 # 字幕文件保存到选定文件夹
@@ -229,17 +216,10 @@ def launch():
                 placeholder="请输入正确的目标文件夹",
             )
             text_outputs = gr.Textbox(label="识别结果")
-            srt_reg = gr.Textbox(label="", visible=False)  # 只用于传递转录完成的信息
 
         stre_btn.click(
             model_inference,
             inputs=[audio_inputs, language_inputs, end_silence_time],
-            outputs=srt_reg,
-        )
-
-        srt_reg.change(
-            display_srt,
-            inputs=audio_inputs,
             outputs=text_outputs,
         )
 
