@@ -69,7 +69,7 @@ def crop_audio(audio_data, start_time, end_time, sample_rate):
 
 # 模型推理函数
 def model_inference(input_wav, language, silence_threshold, fs=16000):
-    srt_file = Path(input_wav).with_suffix(".srt")
+    srt_file = input_wav.replace(".mp3", ".srt")
     language_abbr = {
         "auto": "auto",
         "zh": "zh",
@@ -136,6 +136,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
                 batch_size_s=60,
                 merge_vad=True,  # 启用 VAD 断句
                 merge_length_s=10000,  # 合并长度，单位为毫秒
+                ban_emo_unk=True,  # 禁用情感标签
             )
 
         # 处理输出结果
@@ -147,14 +148,13 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
                 "text": text.replace(" ", ""),
             }
         )
-
     # 输出结果并保存为srt文件
     write_srt(results, srt_file)
     return results
 
 
 def display_srt(audio_inputs):
-    srt_file = Path(audio_inputs).with_suffix(".srt")
+    srt_file = audio_inputs.replace(".mp3", ".srt")
     with open(srt_file, "r", encoding="utf-8") as f:
         gr.Info("音频转录完成。")
         return f.read().strip()
@@ -162,11 +162,11 @@ def display_srt(audio_inputs):
 
 # 字幕文件保存到选定文件夹
 def save_file(audio_inputs, path_input_text):
-    if not Path(path_input_text).exists():
+    if not Path(path_input_text).is_dir() or path_input_text.strip() == "":
         gr.Warning("请输入有效路径！")
     else:
         try:
-            srt_file = Path(audio_inputs).with_suffix(".srt")
+            srt_file = audio_inputs.replace(".mp3", ".srt")
             shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
             gr.Info("文件已保存。")
         except Exception as e:
