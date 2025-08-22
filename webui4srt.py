@@ -57,7 +57,7 @@ def crop_audio(audio_data, start_time, end_time, sample_rate):
 
 # 模型推理函数
 def model_inference(input_wav, language, silence_threshold, fs=16000):
-    srt_file = input_wav.replace(".mp3", ".srt")
+    srt_file = Path(input_wav).with_suffix(".srt")
     language_abbr = {
         "auto": "auto",
         "zh": "zh",
@@ -91,6 +91,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
         disable_update=True,
         max_end_silence_time=silence_threshold,  # 静音阈值，范围500ms～6000ms，默认值800ms。
     )
+
     # 使用VAD模型处理音频文件
     vad_res = vad_model.generate(
         input=input_wav,
@@ -104,7 +105,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     # 加载原始音频数据
     audio_data, sample_rate = sf.read(input_wav)
 
-    # 对每个语音片段进行处理
+    # 对单个语音片段进行处理
     results = ""
     srt_id = 1
     for segment in segments:
@@ -143,7 +144,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
         srt_id += 1
     # 输出结果并保存为srt文件
     write_srt(results, srt_file)
-    gr.Info("音频转录完成。")
+    gr.Info(f"音频{Path(input_wav).name}转录完成。")
     return results
 
 
@@ -153,9 +154,9 @@ def save_file(audio_inputs, path_input_text):
         gr.Warning("请输入有效路径！")
     else:
         try:
-            srt_file = audio_inputs.replace(".mp3", ".srt")
+            srt_file = Path(audio_inputs).with_suffix(".srt")
             shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
-            gr.Info("文件已保存。")
+            gr.Info(f"文件{srt_file.name}已保存。")
         except Exception as e:
             gr.Warning(f"保存文件时出错: {e}")
 
@@ -166,7 +167,6 @@ def multi_file_asr(multi_files_upload, language, silence_threshold):
     for audio_inputs in multi_files_upload:
         model_inference(audio_inputs, language, silence_threshold, fs=16000)
         num += 1
-        gr.Info(f"已转录{num}个音频。")
     gr.Info(f"总共转录{num}个音频，已全部完成")
 
 
@@ -230,7 +230,9 @@ def launch():
         )
 
         with gr.Tab(label="多文件转录"), gr.Column():
-            multi_files_upload = gr.File(label="上传音频", file_count="directory", file_types=[".mp3"])
+            multi_files_upload = gr.File(
+                label="上传音频", file_count="directory", file_types=[".mp3", ".wav", ".flac", ".m4a", ".ogg"]
+            )
             with gr.Accordion("配置"), gr.Row():
                 language_inputs = gr.Dropdown(
                     choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
