@@ -21,8 +21,10 @@ vad_model_dir = "fsmn-vad"  # VAD模型路径
 # 加载SenseVoice模型
 model = AutoModel(
     model=model_dir,
-    device="cuda:0",
-    disable_update=True,
+    device="cuda:0" if torch.cuda.is_available() else "cpu",
+    # trust_remote_code=False,
+    # remote_code="./model.py",
+    disable_update=False,
 )
 
 
@@ -40,7 +42,7 @@ def reformat_time(second):
     return hms
 
 
-# 将语音识别得到的文本转写为srt字幕文本
+# 将语音识别得到的文本转写为srt字幕文件
 def write_srt(results, srt_file):
     with open(srt_file, "w", encoding="utf-8") as f:
         f.writelines(results)
@@ -83,8 +85,10 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     # 加载VAD模型
     vad_model = AutoModel(
         model=vad_model_dir,
-        device="cuda:0",
-        disable_update=True,
+        device="cuda:0" if torch.cuda.is_available() else "cpu",
+        disable_update=False,
+        # trust_remote_code=False,
+        # remote_code="./model.py",
         max_end_silence_time=silence_threshold,  # 静音阈值，范围500ms～6000ms，默认值800ms。
     )
 
