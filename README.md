@@ -1,13 +1,22 @@
-# SenseVoice-SRT
+简体中文： 基于sensevoice官方webui修改而来，可以单文件或批量输出SRT字幕。（**注意：Gradio不支持中文符号如《》、（）等作为文件名称使用。**）
 
-简体中文：
-基于[sensevoice](https://github.com/FunAudioLLM/SenseVoice)官方webui修改而来，可以单文件或批量输出SRT字幕。需要配合官方项目使用。（注意：Gradio不支持中文符号如《》、（）等作为文件名称使用。）
+English: Based on the official sensevoice webui, it can output SRT subtitles for single files or in batch mode. 
 
-English:
-Based on the official [sensevoice](https://github.com/FunAudioLLM/SenseVoice) webui, it can output SRT subtitles for single files or in batch mode. It needs to be used in conjunction with the official project.
+日本語: これはsensevoiceの公式webuiを基にしたものです。単一ファイルまたはバッチ処理でSRT字幕を出力できます。
 
-日本語:
-これは[sensevoice](https://github.com/FunAudioLLM/SenseVoice)の公式webuiを基にしたものです。単一ファイルまたはバッチ処理でSRT字幕を出力できます。これは公式プロジェクトと併せて使用する必要があります。
+推荐使用uv安装：
+```uv pip install -r requirements``` or ```uv add -r requirements```
+
+请自行安装torch和torchaudio：<https://pytorch.org/get-started/locally/>
+
+for example:
+```uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126```
+
+关于模型下载：
+修改```sensevoicesmall```和```fmsn_vad```的模型加载参数，当```disable_update=False```时，会自动下载模型。
+下载完成后请改为```disable_update=True```，以缩短程序启动时间。
 
 
-![WebUI](屏幕.jpeg)
+需要批量转录时，务必先尝试单个文件转录，找到理想的静音阈值，确保断句的准确性。
+
+![WebUI](屏幕.jpg)

@@ -16,13 +16,11 @@ from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
 # 模型路径
 model_dir = "iic/SenseVoiceSmall"
-vad_model_dir = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"  # VAD模型路径
+vad_model_dir = "fsmn-vad"  # VAD模型路径
 
 # 加载SenseVoice模型
 model = AutoModel(
     model=model_dir,
-    trust_remote_code=True,
-    remote_code="./model.py",
     device="cuda:0",
     disable_update=True,
 )
@@ -85,8 +83,6 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     # 加载VAD模型
     vad_model = AutoModel(
         model=vad_model_dir,
-        trust_remote_code=True,
-        remote_code="./model.py",
         device="cuda:0",
         disable_update=True,
         max_end_silence_time=silence_threshold,  # 静音阈值，范围500ms～6000ms，默认值800ms。
@@ -155,7 +151,9 @@ def save_file(audio_inputs, path_input_text):
     else:
         try:
             srt_file = Path(audio_inputs).with_suffix(".srt")
-            shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
+            shutil.copy2(
+                srt_file, path_input_text
+            )  # 如果有同名文件会覆盖保存，没有则复制
             gr.Info(f"文件{srt_file.name}已保存。")
         except Exception as e:
             gr.Warning(f"保存文件时出错: {e}")
@@ -231,7 +229,9 @@ def launch():
 
         with gr.Tab(label="多文件转录"), gr.Column():
             multi_files_upload = gr.File(
-                label="上传音频", file_count="directory", file_types=[".mp3", ".wav", ".flac", ".m4a", ".ogg"]
+                label="上传音频",
+                file_count="directory",
+                file_types=[".mp3", ".wav", ".flac", ".m4a", ".ogg"],
             )
             with gr.Accordion("配置"), gr.Row():
                 language_inputs = gr.Dropdown(
