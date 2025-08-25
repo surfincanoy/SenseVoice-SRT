@@ -16,7 +16,7 @@ English: Based on the official sensevoice webui, it can output SRT subtitles for
 for example:
 ```uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126```
 
-四、如需要使用CPU推理，请将```device="cuda:0"```修改成```device="cpu"```，再使用如下如下命令配置环境：
+四、如需要使用CPU推理，请将```device="cuda:0"```修改成```device="cpu"```，再使用如下命令配置环境：
 ```uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu```
 
 五、关于模型下载：
