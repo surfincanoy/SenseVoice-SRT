@@ -18,4 +18,7 @@ After downloading, set ```disable_update=True``` to reduce startup time.
 
 
 **Important**:
+
 When performing batch transcription, always test with a single file first to find the optimal silence threshold and ensure accurate sentence segmentation.
+
+![WebUI](屏幕.jpg)
