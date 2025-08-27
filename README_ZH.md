@@ -1,4 +1,4 @@
-[中文](README_ZH.md)， [English](README.md)
+[中文](README_ZH.md) | [English](README.md)
 
 基于sensevoice官方webui修改而来，可以单文件或批量输出SRT字幕。（**注意：Gradio不支持中文符号如《》、（）等作为文件名称使用。**）
 

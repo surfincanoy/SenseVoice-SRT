@@ -1,4 +1,4 @@
-[中文](README_ZH.md)， [English](README.md)
+[中文](README_ZH.md) | [English](README.md)
 
 Based on the official SenseVoice WebUI, modified to support single-file or batch output of SRT subtitles. 
 

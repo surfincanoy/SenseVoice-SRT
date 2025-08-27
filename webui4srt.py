@@ -203,7 +203,7 @@ def launch():
                 )
                 end_silence_time = gr.Slider(
                     label="静音阈值",
-                    minimum=500,
+                    minimum=300,
                     maximum=6000,
                     step=100,
                     value=800,
@@ -245,7 +245,7 @@ def launch():
                 )
                 end_silence_time = gr.Slider(
                     label="静音阈值",
-                    minimum=500,
+                    minimum=300,
                     maximum=6000,
                     step=100,
                     value=800,
