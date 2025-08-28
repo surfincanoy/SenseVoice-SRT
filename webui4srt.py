@@ -5,7 +5,8 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-
+import re
+import emoji
 import gradio as gr
 import numpy as np
 import soundfile as sf  # 用于读取和裁剪音频文件
@@ -24,7 +25,7 @@ model = AutoModel(
     device="cuda:0" if torch.cuda.is_available() else "cpu",
     # trust_remote_code=False,
     # remote_code="./model.py",
-    disable_update=False,
+    disable_update=True,
 )
 
 
@@ -86,7 +87,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     vad_model = AutoModel(
         model=vad_model_dir,
         device="cuda:0" if torch.cuda.is_available() else "cpu",
-        disable_update=False,
+        disable_update=True,
         # trust_remote_code=False,
         # remote_code="./model.py",
         max_end_silence_time=silence_threshold,  # 静音阈值，范围500ms～6000ms，默认值800ms。
@@ -131,6 +132,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
 
         # 处理输出结果
         text = rich_transcription_postprocess(res[0]["text"])
+        cleaned_text = emoji.replace_emoji(text, replace="")  # 去除表情符号
         results += (
             str(srt_id)
             + "\n"
@@ -138,7 +140,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
             + " --> "
             + str(reformat_time(end_time / 1000))
             + "\n"
-            + text.replace(" ", "").strip()
+            + cleaned_text.replace(" ", "").strip()
             + "\n\n"
         )
         srt_id += 1
@@ -203,7 +205,7 @@ def launch():
                 )
                 end_silence_time = gr.Slider(
                     label="静音阈值",
-                    minimum=300,
+                    minimum=100,
                     maximum=6000,
                     step=100,
                     value=800,
@@ -245,7 +247,7 @@ def launch():
                 )
                 end_silence_time = gr.Slider(
                     label="静音阈值",
-                    minimum=300,
+                    minimum=100,
                     maximum=6000,
                     step=100,
                     value=800,
