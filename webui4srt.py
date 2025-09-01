@@ -1,11 +1,11 @@
 # coding=utf-8
 import io  # 用于在内存中操作文件
+import re
 import shutil
 import threading
-import time
 import webbrowser
 from pathlib import Path
-import re
+
 import emoji
 import gradio as gr
 import numpy as np
@@ -19,6 +19,7 @@ from funasr.utils.postprocess_utils import rich_transcription_postprocess
 model_dir = "iic/SenseVoiceSmall"
 vad_model_dir = "fsmn-vad"  # VAD模型路径
 
+
 # 加载SenseVoice模型
 model = AutoModel(
     model=model_dir,
@@ -30,8 +31,74 @@ model = AutoModel(
 
 
 def open_page():
-    time.sleep(5)
+    # time.sleep(1)
     webbrowser.open_new_tab("http://127.0.0.1:7860")
+
+
+def clean_punctuation(text):
+    # 定义要删除的标点符号集合（注意：这里你重复了 " 和 '，已去重）
+    multilingual_punctuation = {
+        # 中文
+        "。",
+        "，",
+        "？",
+        "！",
+        "：",
+        "；",
+        '"',
+        "'",
+        "（",
+        "）",
+        "——",
+        "……",
+        # 日文
+        "、",
+        "「",
+        "」",
+        # 英文
+        '"',
+        "#",
+        "$",
+        "%",
+        "&",
+        "'",
+        "(",
+        ")",
+        "*",
+        "+",
+        ",",
+        "-",
+        ".",
+        "/",
+        ":",
+        ";",
+        "<",
+        "=",
+        ">",
+        "?",
+        "@",
+        "[",
+        "\\",
+        "]",
+        "^",
+        "_",
+        "`",
+        "{",
+        "|",
+        "}",
+        "~",
+    }
+
+    # 将标点符号转为字符串，用于正则表达式
+    punctuation_str = "|".join(re.escape(p) for p in multilingual_punctuation)
+
+    # 删除句首的标点（匹配开头的一个或多个标点）
+    text = re.sub(r"^[" + punctuation_str + "]+", "", text)
+
+    # 删除句尾的标点（匹配结尾的一个或多个标点）
+    text = re.sub(r"[" + punctuation_str + "]+$", "", text)
+
+    return text.strip()
 
 
 # 定义时间戳格式
@@ -133,6 +200,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
         # 处理输出结果
         text = rich_transcription_postprocess(res[0]["text"])
         cleaned_text = emoji.replace_emoji(text, replace="")  # 去除表情符号
+        cleaned_text = clean_punctuation(cleaned_text)
         results += (
             str(srt_id)
             + "\n"
@@ -157,9 +225,7 @@ def save_file(audio_inputs, path_input_text):
     else:
         try:
             srt_file = Path(audio_inputs).with_suffix(".srt")
-            shutil.copy2(
-                srt_file, path_input_text
-            )  # 如果有同名文件会覆盖保存，没有则复制
+            shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
             gr.Info(f"文件{srt_file.name}已保存。")
         except Exception as e:
             gr.Warning(f"保存文件时出错: {e}")
