@@ -1,4 +1,3 @@
-# coding=utf-8
 import io  # 用于在内存中操作文件
 import re
 import shutil
@@ -56,12 +55,10 @@ def clean_punctuation(text):
         "「",
         "」",
         # 英文
-        '"',
         "#",
         "$",
         "%",
         "&",
-        "'",
         "(",
         ")",
         "*",
@@ -193,7 +190,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
                 use_itn=True,
                 batch_size_s=60,
                 merge_vad=True,  # 启用 VAD 断句
-                merge_length_s=10000,  # 合并长度，单位为毫秒
+                merge_length_s=15,  # 合并长度，单位为毫秒
                 ban_emo_unk=True,  # 禁用情感标签
             )
 
@@ -201,14 +198,16 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
         text = rich_transcription_postprocess(res[0]["text"])
         cleaned_text = emoji.replace_emoji(text, replace="")  # 去除表情符号
         cleaned_text = clean_punctuation(cleaned_text)
+        if selected_language not in ["en","ko"]:
+            cleaned_text = cleaned_text.replace(" ", "").strip()
         results += (
-            str(srt_id)
+            str(srt_id) 
             + "\n"
             + str(reformat_time(start_time / 1000))
             + " --> "
             + str(reformat_time(end_time / 1000))
             + "\n"
-            + cleaned_text.replace(" ", "").strip()
+            + cleaned_text
             + "\n\n"
         )
         srt_id += 1
@@ -265,80 +264,40 @@ def launch():
             audio_inputs = gr.Audio(label="上传音频或录制麦克风", type="filepath")
             with gr.Accordion("配置"), gr.Row():
                 language_inputs = gr.Dropdown(
-                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
-                    value="auto",
-                    label="说话语言",
+                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"], value="auto", label="说话语言"
                 )
                 end_silence_time = gr.Slider(
-                    label="静音阈值",
-                    minimum=100,
-                    maximum=6000,
-                    step=100,
-                    value=800,
-                    interactive=True,
+                    label="静音阈值", minimum=100, maximum=6000, step=100, value=800, interactive=True
                 )
             with gr.Row():
                 stre_btn = gr.Button("开始转录", variant="primary")
                 save_btn = gr.Button("保存字幕", variant="primary")
-            path_input_text = gr.Text(
-                label="保存路径",
-                interactive=True,
-                placeholder="请输入正确的目标文件夹",
-            )
+            path_input_text = gr.Text(label="保存路径", interactive=True, placeholder="请输入正确的目标文件夹")
             text_outputs = gr.Textbox(label="识别结果")
 
-        stre_btn.click(
-            model_inference,
-            inputs=[audio_inputs, language_inputs, end_silence_time],
-            outputs=text_outputs,
-        )
+        stre_btn.click(model_inference, inputs=[audio_inputs, language_inputs, end_silence_time], outputs=text_outputs)
 
-        save_btn.click(
-            save_file,
-            inputs=[audio_inputs, path_input_text],
-            outputs=[],
-        )
+        save_btn.click(save_file, inputs=[audio_inputs, path_input_text], outputs=[])
 
         with gr.Tab(label="多文件转录"), gr.Column():
             multi_files_upload = gr.File(
-                label="上传音频",
-                file_count="directory",
-                file_types=[".mp3", ".wav", ".flac", ".m4a", ".ogg"],
+                label="上传音频", file_count="directory", file_types=[".mp3", ".wav", ".flac", ".m4a", ".ogg"]
             )
             with gr.Accordion("配置"), gr.Row():
                 language_inputs = gr.Dropdown(
-                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"],
-                    value="auto",
-                    label="说话语言",
+                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"], value="auto", label="说话语言"
                 )
                 end_silence_time = gr.Slider(
-                    label="静音阈值",
-                    minimum=100,
-                    maximum=6000,
-                    step=100,
-                    value=800,
-                    interactive=True,
+                    label="静音阈值", minimum=100, maximum=6000, step=100, value=800, interactive=True
                 )
             with gr.Row():
                 stre_btn = gr.Button("开始转录", variant="primary")
                 save_btn = gr.Button("保存字幕", variant="primary")
-            path_input_text = gr.Text(
-                label="保存路径",
-                interactive=True,
-                placeholder="请输入正确的目标文件夹",
-            )
+            path_input_text = gr.Text(label="保存路径", interactive=True, placeholder="请输入正确的目标文件夹")
 
-        stre_btn.click(
-            multi_file_asr,
-            inputs=[multi_files_upload, language_inputs, end_silence_time],
-            outputs=[],
-        )
+        stre_btn.click(multi_file_asr, inputs=[multi_files_upload, language_inputs, end_silence_time], outputs=[])
 
-        save_btn.click(
-            save_multi_srt,
-            inputs=[multi_files_upload, path_input_text],
-            outputs=[],
-        )
+        save_btn.click(save_multi_srt, inputs=[multi_files_upload, path_input_text], outputs=[])
 
     threading.Thread(target=open_page).start()
     demo.launch()
