@@ -13,13 +13,17 @@ Environment Setup:
 4, For **CPU** transcription, install torch and torchaudio: ```uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu```
 
 5, Model download instructions:
-
 Modify the model loading parameters for ```sensevoicesmall``` and ```fmsn_vad```.
 When ```disable_update=False```, the models will be automatically downloaded.
 After downloading, set ```disable_update=True``` to reduce startup time.
 
+6， Added inference support for the Whisper model. 
+The supported models are: ```Whisper-large-v3``` and ```Whisper-large-v3-turbo```, with ```Whisper-large-v3-turbo``` being used by default. 
+This model requires an additional installation of ```openai-whisper```: ```uv pip install -U openai-whisper```
 
 **Important**:
 When performing batch transcription, always test with a single file first to find the optimal silence threshold and ensure accurate sentence segmentation.
 
 ![WebUI](屏幕.jpg)
+
+<!-- NiceGUI 版本已移除。若需要额外的替代 UI，可另行实现 -->
