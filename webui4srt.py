@@ -14,7 +14,7 @@ import torchaudio
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
-# 模型路径
+# # 模型路径
 model_dir = "iic/SenseVoiceSmall"
 vad_model_dir = "fsmn-vad"  # VAD模型路径
 
@@ -34,83 +34,25 @@ def open_page():
     webbrowser.open_new_tab("http://127.0.0.1:7860")
 
 
-def clean_punctuation(text):
-    # 定义要删除的标点符号集合（注意：这里你重复了 " 和 '，已去重）
-    multilingual_punctuation = {
-        # 中文
-        "。",
-        "，",
-        "？",
-        "！",
-        "：",
-        "；",
-        '"',
-        "'",
-        "（",
-        "）",
-        "——",
-        "……",
-        # 日文
-        "、",
-        "「",
-        "」",
-        # 英文
-        "#",
-        "$",
-        "%",
-        "&",
-        "(",
-        ")",
-        "*",
-        "+",
-        ",",
-        "-",
-        ".",
-        "/",
-        ":",
-        ";",
-        "<",
-        "=",
-        ">",
-        "?",
-        "@",
-        "[",
-        "\\",
-        "]",
-        "^",
-        "_",
-        "`",
-        "{",
-        "|",
-        "}",
-        "~",
-    }
-
-    # 将标点符号转为字符串，用于正则表达式
-    punctuation_str = "|".join(re.escape(p) for p in multilingual_punctuation)
-
-    # 删除句首的标点（匹配开头的一个或多个标点）
-    text = re.sub(r"^[" + punctuation_str + "]+", "", text)
-
-    # 删除句尾的标点（匹配结尾的一个或多个标点）
-    text = re.sub(r"[" + punctuation_str + "]+$", "", text)
-
-    return text.strip()
-
-
 # 定义时间戳格式
 def reformat_time(second):
-    m, s = divmod(second, 60)
-    h, m = divmod(m, 60)
-    hms = "%02d:%02d:%s" % (h, m, str("%.3f" % s).zfill(6))
-    hms = hms.replace(".", ",")
-    return hms
+    hours = int(second // 3600)
+    minutes = int((second % 3600) // 60)
+    secs = int(second % 60)
+    millis = int((second % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
 # 将语音识别得到的文本转写为srt字幕文件
-def write_srt(results, srt_file):
-    with open(srt_file, "w", encoding="utf-8") as f:
-        f.writelines(results)
+def write_srt(srt_result, srt_file):
+    with Path.open(srt_file, "w", encoding="utf-8") as f:
+        f.writelines(srt_result)
+
+
+# 将语音识别得到的文本转写为txt字幕文件
+def write_txt(txt_result, txt_file):
+    with Path.open(txt_file, "w", encoding="utf-8") as f:
+        f.writelines(txt_result)
 
 
 # 定义一个函数来裁剪音频
@@ -123,6 +65,7 @@ def crop_audio(audio_data, start_time, end_time, sample_rate):
 # 模型推理函数
 def model_inference(input_wav, language, silence_threshold, fs=16000):
     srt_file = Path(input_wav).with_suffix(".srt")
+    txt_file = Path(input_wav).with_suffix(".txt")
     language_abbr = {
         "auto": "auto",
         "zh": "zh",
@@ -171,10 +114,12 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     audio_data, sample_rate = sf.read(input_wav)
 
     # 对单个语音片段进行处理
-    results = ""
+    srt_result = ""
+    txt_result = []
     srt_id = 1
     for segment in segments:
         start_time, end_time = segment  # 获取开始和结束时间
+        # print(f"Processing segment: {start_time} ms to {end_time} ms")
         cropped_audio = crop_audio(audio_data, start_time, end_time, sample_rate)
 
         # 将裁剪后的音频保存到内存中
@@ -191,17 +136,16 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
                 batch_size_s=60,
                 merge_vad=True,  # 启用 VAD 断句
                 merge_length_s=15,  # 合并长度，单位为毫秒
-                ban_emo_unk=True,  # 禁用情感标签
+                ban_emo_unk=False,  # 禁用情感标签
             )
 
         # 处理输出结果
         text = rich_transcription_postprocess(res[0]["text"])
         cleaned_text = emoji.replace_emoji(text, replace="")  # 去除表情符号
-        cleaned_text = clean_punctuation(cleaned_text)
-        if selected_language not in ["en","ko"]:
+        if selected_language not in ["en", "ko"]:
             cleaned_text = cleaned_text.replace(" ", "").strip()
-        results += (
-            str(srt_id) 
+        srt_result += (
+            str(srt_id)
             + "\n"
             + str(reformat_time(start_time / 1000))
             + " --> "
@@ -210,11 +154,13 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
             + cleaned_text
             + "\n\n"
         )
+        txt_result.append(cleaned_text)
         srt_id += 1
     # 输出结果并保存为srt文件
-    write_srt(results, srt_file)
+    write_srt(srt_result, srt_file)
+    write_txt(txt_result, txt_file)
     gr.Info(f"音频{Path(input_wav).name}转录完成。")
-    return results
+    return srt_result
 
 
 # 字幕文件保存到选定文件夹
@@ -224,8 +170,10 @@ def save_file(audio_inputs, path_input_text):
     else:
         try:
             srt_file = Path(audio_inputs).with_suffix(".srt")
+            txt_file = Path(audio_inputs).with_suffix(".txt")
             shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
-            gr.Info(f"文件{srt_file.name}已保存。")
+            shutil.copy2(txt_file, path_input_text)
+            gr.Info(f"转录结果：{srt_file.name}和{txt_file.name}已保存到指定目录。")
         except Exception as e:
             gr.Warning(f"保存文件时出错: {e}")
 
@@ -267,13 +215,13 @@ def launch():
                     choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"], value="auto", label="说话语言"
                 )
                 end_silence_time = gr.Slider(
-                    label="静音阈值", minimum=100, maximum=6000, step=100, value=800, interactive=True
+                    label="静音阈值", minimum=0, maximum=6000, step=50, value=800, interactive=True
                 )
             with gr.Row():
                 stre_btn = gr.Button("开始转录", variant="primary")
                 save_btn = gr.Button("保存字幕", variant="primary")
             path_input_text = gr.Text(label="保存路径", interactive=True, placeholder="请输入正确的目标文件夹")
-            text_outputs = gr.Textbox(label="识别结果")
+            text_outputs = gr.Textbox(label="识别结果", lines=20)
 
         stre_btn.click(model_inference, inputs=[audio_inputs, language_inputs, end_silence_time], outputs=text_outputs)
 
@@ -288,7 +236,7 @@ def launch():
                     choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"], value="auto", label="说话语言"
                 )
                 end_silence_time = gr.Slider(
-                    label="静音阈值", minimum=100, maximum=6000, step=100, value=800, interactive=True
+                    label="静音阈值", minimum=0, maximum=6000, step=50, value=800, interactive=True
                 )
             with gr.Row():
                 stre_btn = gr.Button("开始转录", variant="primary")
@@ -300,7 +248,7 @@ def launch():
         save_btn.click(save_multi_srt, inputs=[multi_files_upload, path_input_text], outputs=[])
 
     threading.Thread(target=open_page).start()
-    demo.launch()
+    demo.launch(css=".gradio-textbox {font-family: 微软雅黑}")
 
 
 if __name__ == "__main__":

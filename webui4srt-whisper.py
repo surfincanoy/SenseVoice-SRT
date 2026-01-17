@@ -1,7 +1,7 @@
 # Copyright FunASR (https://github.com/alibaba-damo-academy/FunASR). All Rights Reserved.
 #  MIT License  (https://opensource.org/licenses/MIT)
 
-# To install requirements: pip3 install -U openai-whisper
+# To install requirements: uv pip install -U openai-whisper
 
 import io  # 用于在内存中操作文件
 import shutil
@@ -31,23 +31,28 @@ model = AutoModel(
 
 
 def open_page():
-    # time.sleep(1)
     webbrowser.open_new_tab("http://127.0.0.1:7860")
 
 
 # 定义时间戳格式
 def reformat_time(second):
-    m, s = divmod(second, 60)
-    h, m = divmod(m, 60)
-    hms = "%02d:%02d:%s" % (h, m, str("%.3f" % s).zfill(6))
-    hms = hms.replace(".", ",")
-    return hms
+    hours = int(second // 3600)
+    minutes = int((second % 3600) // 60)
+    secs = int(second % 60)
+    millis = int((second % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
 # 将语音识别得到的文本转写为srt字幕文件
 def write_srt(results, srt_file):
     with Path.open(srt_file, "w", encoding="utf-8") as f:
         f.writelines(results)
+
+
+# 将语音识别得到的文本转写为txt字幕文件
+def write_txt(txt_result, txt_file):
+    with Path.open(txt_file, "w", encoding="utf-8") as f:
+        f.writelines(txt_result)
 
 
 # 定义一个函数来裁剪音频
@@ -60,8 +65,9 @@ def crop_audio(audio_data, start_time, end_time, sample_rate):
 # 模型推理函数
 def model_inference(input_wav, language, silence_threshold, fs=16000):
     srt_file = Path(input_wav).with_suffix(".srt")
+    txt_file = Path(input_wav).with_suffix(".txt")
     language_abbr = {
-        "auto": None,
+        "auto": None,  # 自动识别，whisper全部99种语言均可识别，如果需要指定语言，请自己修改代码
         "zh": "zh",
         "en": "en",
         "ja": "ja",
@@ -103,16 +109,24 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     audio_data, sample_rate = sf.read(input_wav)
 
     # 对单个语音片段进行处理
-    results = ""
+    srt_result = ""
+    txt_result = []
     srt_id = 1
+
+    prompt_dict = {
+        "auto": "",  # auto
+        "en": "Tom, There is a Chinese person among them.",
+        "zh": "我是一个台湾人，也是一个中国人。",
+        "ja": "その中に、一人の日本人がいます。誰だと思いますか？",
+    }
 
     DecodingOptions = {
         "task": "transcribe",
-        "language": selected_language,
-        "beam_size": None,  # zh,en,ja, and None for auto
+        "language": selected_language,  # zh,en,ja, and None for auto
+        "beam_size": None,
         "fp16": True,
-        "without_timestamps": False,
-        "prompt": None,
+        "without_timestamps": True,
+        "prompt": prompt_dict.get(selected_language, ""),
     }
     for segment in segments:
         start_time, end_time = segment  # 获取开始和结束时间
@@ -132,7 +146,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
 
         # 处理输出结果
         cleaned_text = res[0]["text"]
-        results += (
+        srt_result += (
             str(srt_id)
             + "\n"
             + str(reformat_time(start_time / 1000))
@@ -142,11 +156,13 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
             + cleaned_text
             + "\n\n"
         )
+        txt_result.append(cleaned_text)
         srt_id += 1
     # 输出结果并保存为srt文件
-    write_srt(results, srt_file)
+    write_srt(srt_result, srt_file)
+    write_txt(txt_result, txt_file)
     gr.Info(f"音频{Path(input_wav).name}转录完成。")
-    return results
+    return srt_result
 
 
 # 字幕文件保存到选定文件夹
@@ -157,6 +173,8 @@ def save_file(audio_inputs, path_input_text):
         try:
             srt_file = Path(audio_inputs).with_suffix(".srt")
             shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
+            txt_file = Path(audio_inputs).with_suffix(".txt")
+            shutil.copy2(txt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
             gr.Info(f"文件{srt_file.name}已保存。")
         except Exception as e:
             gr.Warning(f"保存文件时出错: {e}")
@@ -228,7 +246,7 @@ def launch():
         save_btn.click(save_multi_srt, inputs=[multi_files_upload, path_input_text], outputs=[])
 
     threading.Thread(target=open_page).start()
-    demo.launch()
+    demo.launch(css=".gradio-textbox {font-family: 微软雅黑}")
 
 
 if __name__ == "__main__":
