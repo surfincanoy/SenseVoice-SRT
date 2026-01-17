@@ -1,30 +1,28 @@
-# Copyright FunASR (https://github.com/alibaba-damo-academy/FunASR). All Rights Reserved.
-#  MIT License  (https://opensource.org/licenses/MIT)
-
-# To install requirements: uv pip install -U openai-whisper
-
 import shutil
 import threading
 import webbrowser
 from pathlib import Path
 
+import emoji
 import gradio as gr
 import numpy as np
 import soundfile as sf  # 用于读取和裁剪音频文件
 import torch
 import torchaudio
 from funasr import AutoModel
+from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
-# 模型路径
-model_dir = "iic/Whisper-large-v3-turbo"  # model_dir = "iic/Whisper-large-v3"
+# # 模型路径
+asr_model_dir = "iic/SenseVoiceSmall"
 vad_model_dir = "fsmn-vad"  # VAD模型路径
 
 
 # 加载SenseVoice模型
-model = AutoModel(
-    model=model_dir,
+asr_model = AutoModel(
+    model=asr_model_dir,
     device="cuda:0" if torch.cuda.is_available() else "cpu",
-    vad_kwargs={"max_single_segment_time": 30000},
+    # trust_remote_code=False,
+    # remote_code="./model.py",
     disable_update=True,
 )
 
@@ -43,9 +41,9 @@ def reformat_time(second):
 
 
 # 将语音识别得到的文本转写为srt字幕文件
-def write_srt(results, srt_file):
+def write_srt(srt_result, srt_file):
     with Path.open(srt_file, "w", encoding="utf-8") as f:
-        f.writelines(results)
+        f.writelines(srt_result)
 
 
 # 将语音识别得到的文本转写为txt字幕文件
@@ -57,6 +55,7 @@ def write_txt(txt_result, txt_file):
 def cut_wav_to_ndarray(wav_path: str, start_s: float, end_s: float) -> np.ndarray:
     if end_s <= start_s:
         raise ValueError("end_s must be > start_s")
+
     with sf.SoundFile(wav_path) as f:
         sr = f.samplerate
         channels = f.channels
@@ -77,14 +76,17 @@ def cut_wav_to_ndarray(wav_path: str, start_s: float, end_s: float) -> np.ndarra
 
 
 # 模型推理函数
-def model_inference(input_wav, language, silence_threshold, fs=16000):
+def model_inference(input_wav, language, silence_threshold):
     srt_file = Path(input_wav).with_suffix(".srt")
     txt_file = Path(input_wav).with_suffix(".txt")
     language_abbr = {
-        "auto": None,  # 自动识别，whisper全部99种语言均可识别，如果需要指定语言，请自己在下方修改代码，比如："ko": "ko",
+        "auto": "auto",
         "zh": "zh",
         "en": "en",
+        "yue": "yue",
         "ja": "ja",
+        "ko": "ko",
+        "nospeech": "nospeech",
     }
 
     language = "auto" if len(language) < 1 else language
@@ -95,6 +97,8 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
         model=vad_model_dir,
         device="cuda:0" if torch.cuda.is_available() else "cpu",
         disable_update=True,
+        # trust_remote_code=False,
+        # remote_code="./model.py",
         max_end_silence_time=silence_threshold,  # 静音阈值，范围500ms～6000ms，默认值800ms。
     )
 
@@ -102,7 +106,7 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     vad_res = vad_model.generate(
         input=input_wav,
         cache={},
-        # max_single_segment_time=30000,  # 最大单个片段时长
+        max_single_segment_time=30000,  # 最大单个片段时长
     )
 
     # 从VAD模型的输出中提取每个语音片段的开始和结束时间
@@ -112,35 +116,27 @@ def model_inference(input_wav, language, silence_threshold, fs=16000):
     srt_result = ""
     txt_result = []
     srt_id = 1
-
-    prompt_dict = {
-        "auto": "",  # auto
-        "en": "Tom, There is a Chinese person among them.",
-        "zh": "我是一个台湾人，也是一个中国人。",
-        "ja": "その中に、一人の日本人がいます。誰だと思いますか？",
-    }
-
-    DecodingOptions = {
-        "task": "transcribe",
-        "language": selected_language,  # zh,en,ja, and None for auto
-        "beam_size": None,
-        "fp16": True,
-        "without_timestamps": True,
-        "prompt": prompt_dict.get(selected_language, ""),
-    }
     for segment in segments:
         start_time, end_time = segment  # 获取开始和结束时间
         audio_temp = cut_wav_to_ndarray(input_wav, start_time, end_time)
 
         # 语音转文字处理
-        res = model.generate(
+        res = asr_model.generate(
             input=audio_temp,
-            DecodingOptions=DecodingOptions,
-            batch_size_s=0,
+            cache={},
+            language=selected_language,  # 自动检测语言
+            use_itn=True,
+            batch_size_s=60,
+            merge_vad=True,  # 启用 VAD 断句
+            merge_length_s=15,  # 合并长度，单位为毫秒
+            ban_emo_unk=False,  # 禁用情感标签
         )
 
         # 处理输出结果
-        cleaned_text = res[0]["text"]
+        cleaned_text = rich_transcription_postprocess(res[0]["text"])
+        cleaned_text = emoji.replace_emoji(cleaned_text, replace="")  # 去除表情符号
+        if selected_language not in ["en", "ko"]:
+            cleaned_text = cleaned_text.replace(" ", "").strip()
         srt_result += (
             str(srt_id)
             + "\n"
@@ -167,10 +163,10 @@ def save_file(audio_inputs, path_input_text):
     else:
         try:
             srt_file = Path(audio_inputs).with_suffix(".srt")
-            shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
             txt_file = Path(audio_inputs).with_suffix(".txt")
-            shutil.copy2(txt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
-            gr.Info(f"文件{srt_file.name}已保存。")
+            shutil.copy2(srt_file, path_input_text)  # 如果有同名文件会覆盖保存，没有则复制
+            shutil.copy2(txt_file, path_input_text)
+            gr.Info(f"转录结果：{srt_file.name}和{txt_file.name}已保存到指定目录。")
         except Exception as e:
             gr.Warning(f"保存文件时出错: {e}")
 
@@ -208,7 +204,9 @@ def launch():
         with gr.Tab(label="单文件转录"), gr.Column():
             audio_inputs = gr.Audio(label="上传音频或录制麦克风", type="filepath")
             with gr.Accordion("配置"), gr.Row():
-                language_inputs = gr.Dropdown(choices=["auto", "zh", "en", "ja"], value="auto", label="说话语言")
+                language_inputs = gr.Dropdown(
+                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"], value="auto", label="说话语言"
+                )
                 end_silence_time = gr.Slider(
                     label="静音阈值", minimum=0, maximum=6000, step=50, value=800, interactive=True
                 )
@@ -227,7 +225,9 @@ def launch():
                 label="上传音频", file_count="directory", file_types=[".mp3", ".wav", ".flac", ".m4a", ".ogg"]
             )
             with gr.Accordion("配置"), gr.Row():
-                language_inputs = gr.Dropdown(choices=["auto", "zh", "en", "ja"], value="auto", label="说话语言")
+                language_inputs = gr.Dropdown(
+                    choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"], value="auto", label="说话语言"
+                )
                 end_silence_time = gr.Slider(
                     label="静音阈值", minimum=0, maximum=6000, step=50, value=800, interactive=True
                 )
